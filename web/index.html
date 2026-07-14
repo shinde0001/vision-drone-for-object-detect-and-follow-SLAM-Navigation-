@@ -24,7 +24,7 @@
         </header>
 
         <!-- Main Content Grid -->
-                <main class="dashboard-grid">
+                        <main class="dashboard-grid">
             
             <!-- Left Sidebar -->
             <aside class="sidebar sidebar-left">
@@ -64,8 +64,9 @@
                         <button class="btn btn-secondary" id="btn-takeoff">TAKEOFF (5m)</button>
                         <button class="btn btn-secondary" id="btn-land">LAND</button>
                     </div>
-                    <div class="control-action">
-                        <button class="btn btn-action start" id="btn-follow">▶ FOLLOW TARGET</button>
+                    <div class="control-action" style="display: flex; gap: 10px;">
+                        <button class="btn btn-action start" id="btn-follow" style="flex: 1;">▶ FOLLOW TARGET</button>
+                        <button class="btn btn-action" id="btn-explore" style="flex: 1; background: #6b46c1;">🌐 SLAM EXPLORE</button>
                     </div>
                 </section>
                 
@@ -77,9 +78,9 @@
                         <div class="control-pad-container">
                             <span class="pad-label">Directional</span>
                             <div class="dpad">
-                                <div class="dpad-cell"></div>
+                                <button class="btn btn-manual" id="btn-yawLeft" data-direction="yawLeft" title="Rotate Left (Q)">↺</button>
                                 <button class="btn btn-manual" id="btn-forward" data-direction="forward" title="Move Forward (W / ArrowUp)">▲</button>
-                                <div class="dpad-cell"></div>
+                                <button class="btn btn-manual" id="btn-yawRight" data-direction="yawRight" title="Rotate Right (E)">↻</button>
                                 <button class="btn btn-manual" id="btn-left" data-direction="left" title="Move Left (A / ArrowLeft)">◀</button>
                                 <button class="btn btn-manual btn-center" disabled>⌖</button>
                                 <button class="btn btn-manual" id="btn-right" data-direction="right" title="Move Right (D / ArrowRight)">▶</button>
@@ -105,10 +106,10 @@
             <!-- Center Column: Video Feed -->
             <section class="video-section card glass-panel">
                 <div class="card-header">
-                    <h2>Live Video Feed</h2>
+                    <h2 id="main-title">Live Video Feed</h2>
                     <span class="badge" id="mode-badge">UNKNOWN</span>
                 </div>
-                <div class="video-container">
+                <div class="video-container" style="cursor: pointer;" onclick="swapDisplays()">
                     <img id="video-stream" src="/video_feed" alt="Live Drone Camera Feed" />
                     <div class="crosshair"></div>
                 </div>
@@ -131,6 +132,18 @@
                         <div class="stat-box"><span class="label">Altitude</span><span class="value" id="tel-alt">0.0m</span></div>
                         <div class="stat-box"><span class="label">Speed</span><span class="value" id="tel-speed">0.0m/s</span></div>
                         <div class="stat-box"><span class="label">Battery</span><span class="value" id="tel-batt">100%</span></div>
+                    </div>
+                </section>
+
+                <!-- SLAM Live Map -->
+                <section class="card glass-panel map-panel">
+                    <h2 id="mini-title">Live 2D Map (SLAM)</h2>
+                    <div style="width: 100%; height: 200px; display: flex; align-items: center; justify-content: center; background: #000; border-radius: 8px; overflow: hidden; position: relative; cursor: pointer;" onclick="swapDisplays()">
+                        <img id="slam-map" src="/map_image" alt="SLAM Map" style="width: 100%; height: 100%; object-fit: contain;" />
+                    </div>
+                    <div class="info-row" style="margin-top: 10px;">
+                        <span class="label">Position (VO):</span>
+                        <span class="value highlight" id="slam-pose">X: 0.0, Y: 0.0</span>
                     </div>
                 </section>
 
@@ -168,6 +181,10 @@
                                 <label for="range-alpha-alt">Altitude Smooth: <span id="val-alpha-alt">0.10</span></label>
                                 <input type="range" id="range-alpha-alt" min="0.01" max="1.0" step="0.01" value="0.10" class="slider" />
                             </div>
+                            <div class="control-row-tuning" style="margin-top: 5px;">
+                                <label for="range-max-fwd-speed">Max Fwd Speed: <span id="val-max-fwd-speed">1.0</span> m/s</label>
+                                <input type="range" id="range-max-fwd-speed" min="0.1" max="3.0" step="0.1" value="1.0" class="slider" />
+                            </div>
                         </div>
                         <button id="btn-tuning-save" class="btn btn-primary" style="margin-top:10px; width:100%">UPDATE TUNING</button>
                     </div>
@@ -193,6 +210,28 @@
         const btnFollow = document.getElementById('btn-follow');
 
         let followActive = false;
+
+        let mapIsMain = false;
+
+        function swapDisplays() {
+            mapIsMain = !mapIsMain;
+            const mainImg = document.getElementById('video-stream');
+            const miniImg = document.getElementById('slam-map');
+            const mainTitle = document.getElementById('main-title');
+            const miniTitle = document.getElementById('mini-title');
+
+            if (mapIsMain) {
+                mainImg.src = "/map_image";
+                miniImg.src = "/video_feed";
+                mainTitle.innerText = "Live 2D Map (SLAM)";
+                miniTitle.innerText = "Live Video Feed";
+            } else {
+                mainImg.src = "/video_feed";
+                miniImg.src = "/map_image";
+                mainTitle.innerText = "Live Video Feed";
+                miniTitle.innerText = "Live 2D Map (SLAM)";
+            }
+        }
 
         // WebSocket Setup
         function connectWebSocket() {
@@ -246,6 +285,20 @@
                         btnFollow.classList.replace('stop', 'start');
                     }
                 }
+                
+                // Update Explore Status
+                if (data.explore_active !== undefined && data.explore_active !== exploreActive) {
+                    exploreActive = data.explore_active;
+                    if (btnExplore) {
+                        if (exploreActive) {
+                            btnExplore.innerText = '⏹ STOP EXPLORE';
+                            btnExplore.classList.replace('start', 'stop');
+                        } else {
+                            btnExplore.innerText = '🌐 SLAM EXPLORE';
+                            btnExplore.classList.replace('stop', 'start');
+                        }
+                    }
+                }
 
                 // Update Target Behavior from server sync
                 if (data.target_behavior && typeof targetBehaviorActive !== 'undefined') {
@@ -255,6 +308,25 @@
                     }
                 }
 
+                // Update SLAM Map and Pose
+                if (data.slam_pose) {
+                    const slamPoseEl = document.getElementById('slam-pose');
+                    if (slamPoseEl) {
+                        slamPoseEl.innerText = `X: ${data.slam_pose.x.toFixed(2)}, Y: ${data.slam_pose.y.toFixed(2)}`;
+                    }
+                    // Throttle image refresh to roughly 2-3 fps to save bandwidth
+                    const now = new Date().getTime();
+                    if (!window.lastMapRefresh || now - window.lastMapRefresh > 300) {
+                        if (mapIsMain) {
+                            const mainImg = document.getElementById('video-stream');
+                            if (mainImg) mainImg.src = "/map_image?t=" + now;
+                        } else {
+                            const miniImg = document.getElementById('slam-map');
+                            if (miniImg) miniImg.src = "/map_image?t=" + now;
+                        }
+                        window.lastMapRefresh = now;
+                    }
+                }
 
                 // Initialize tuning parameters from server on first connection/message
                 if (data.follower_params && !followerParamsInitialized) {
@@ -364,8 +436,23 @@
                 postCommand('/api/follow/stop');
             } else {
                 postCommand('/api/follow/start');
+                if (exploreActive) postCommand('/api/slam/stop_explore');
             }
         });
+        
+        const btnExplore = document.getElementById('btn-explore');
+        let exploreActive = false;
+        
+        if (btnExplore) {
+            btnExplore.addEventListener('click', () => {
+                if (exploreActive) {
+                    postCommand('/api/slam/stop_explore');
+                } else {
+                    postCommand('/api/slam/explore');
+                    if (followActive) postCommand('/api/follow/stop');
+                }
+            });
+        }
 
         // --- Manual Flight Controls Logic ---
         const activeDirections = {

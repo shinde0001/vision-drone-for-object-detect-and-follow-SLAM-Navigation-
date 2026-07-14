@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -22,6 +22,11 @@ from src.camera_stream import CameraStream
 from src.detector import Detector
 from src.drone_controller import DroneController
 from src.follower import FollowController
+from src.sensor_sync import SensorSync
+from src.visual_odometry import VisualOdometry
+from src.map_builder import MapBuilder
+from src.explorer import Explorer
+import numpy as np
 
 app = FastAPI()
 
@@ -41,10 +46,21 @@ camera = CameraStream(port=5600)
 detector = Detector()
 drone = DroneController(system_address="udp://:14540")
 follower = FollowController(drone)
+sensor_sync = SensorSync()
+
+# Camera intrinsics from SDF
+CAMERA_MATRIX = np.array([
+    [277.19, 0,      160.5],
+    [0,      277.19, 120.5],
+    [0,      0,      1.0  ]
+])
+vo = VisualOdometry(CAMERA_MATRIX)
+map_builder = MapBuilder()
 
 state = {
     "target_class": "person",
     "follow_active": False,
+    "explore_active": False,
     "latest_detection": None,
     "manual_active": False,
     "manual_velocity": {
@@ -63,6 +79,7 @@ state = {
     }
 }
 
+explorer = Explorer(drone, map_builder, state)
 @app.on_event("startup")
 async def startup_event():
     # Start camera thread
@@ -76,6 +93,19 @@ async def startup_event():
     
     # Start target movement loop
     asyncio.create_task(target_movement_loop())
+    
+    # Start sensor sync telemetry loop
+    asyncio.create_task(sync_telemetry_loop())
+
+async def sync_telemetry_loop():
+    """Background loop to feed telemetry into SensorSync at 50Hz"""
+    while True:
+        try:
+            if drone.connected:
+                sensor_sync.add_telemetry(drone.telemetry)
+        except Exception as e:
+            print(f"Error in sync_telemetry_loop: {e}")
+        await asyncio.sleep(0.02)  # 50Hz
 
 async def control_loop():
     """Main loop for sending offboard commands based on detections or manual controls"""
@@ -105,6 +135,7 @@ async def target_movement_loop():
     # Map UI/YOLO classes to Gazebo model names
     gazebo_models = {
         "person": "person_standing",
+        "car": "car",
         "red_sphere": "red_sphere",
         "blue_cube": "blue_cube",
         "green_cone": "green_cone",
@@ -114,6 +145,7 @@ async def target_movement_loop():
     # Map model names to their correct ground Z-heights
     model_heights = {
         "person_standing": 0.7,
+        "car": 0.4,
         "red_sphere": 0.3,
         "blue_cube": 0.25,
         "green_cone": 0.3,
@@ -122,6 +154,7 @@ async def target_movement_loop():
 
     model_defaults = {
         "person_standing": (5.0, 5.0),
+        "car": (-5.0, -5.0),
         "red_sphere": (5.0, 0.0),
         "blue_cube": (0.0, 5.0),
         "green_cone": (-5.0, 0.0),
@@ -193,15 +226,34 @@ async def target_movement_loop():
 
 def generate_video():
     """Generator for MJPEG stream"""
+    frame_count = 0
     while True:
         frame = camera.get_frame()
         if frame is None:
             time.sleep(0.1)
             continue
             
+        frame_count += 1
+        
         # Run detection
         detector.set_target(state["target_class"])
         annotated_frame, detection_info = detector.process_frame(frame)
+        
+        # Sync frame with telemetry
+        synced_data = sensor_sync.add_frame(frame)
+        if synced_data and frame_count % 3 == 0:  # ~10 FPS for VO to save CPU
+            # Get smooth EKF2 pose from telemetry
+            odom = synced_data['telemetry']['odometry']
+            ekf_pose = (odom["x"], odom["y"], odom["z"])
+            state["slam_pose"] = {"x": odom["x"], "y": odom["y"], "z": odom["z"]}
+            
+            # Run Visual Odometry to find keypoint matches
+            pose, R, matches, kp = vo.process_frame(synced_data)
+            
+            # Update Map in background thread using smooth EKF2 pose (always run to clear free space)
+            import threading
+            matched_kps = [kp[m.trainIdx] for m in matches] if len(matches) > 0 else []
+            threading.Thread(target=map_builder.update_map, args=(ekf_pose, matched_kps, frame.shape[:2], synced_data['telemetry'], detection_info)).start()
         
         # Update global state for the control loop
         state["latest_detection"] = detection_info
@@ -242,6 +294,18 @@ def generate_video():
         
         # Small sleep to limit frame rate slightly (aiming for ~20-30 FPS)
         time.sleep(0.03)
+
+@app.get("/map_image")
+async def get_map_image():
+    """Return the current SLAM map as a JPEG."""
+    pose_dict = state.get("slam_pose", {"x": 0.0, "y": 0.0, "z": 0.0})
+    pose = (pose_dict["x"], pose_dict["y"], pose_dict["z"])
+    yaw = drone.telemetry.get("attitude", {}).get("yaw", 0.0)
+    img = map_builder.get_map_image(pose, yaw)
+    ret, buffer = cv2.imencode('.jpg', img)
+    if not ret:
+        return Response(status_code=500)
+    return Response(content=buffer.tobytes(), media_type="image/jpeg")
 
 @app.get("/")
 async def get_index():
@@ -313,6 +377,7 @@ async def start_follow():
         success = await drone.start_offboard()
         if success:
             state["follow_active"] = True
+            explorer.stop()
             follower.start()
             return {"success": True}
         return {"success": False, "error": "Failed to start offboard mode"}
@@ -329,6 +394,35 @@ async def stop_follow():
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+@app.post("/api/slam/explore")
+async def start_explore():
+    try:
+        # Save old map to logs folder and reset map
+        pose_dict = state.get("slam_pose", {"x": 0.0, "y": 0.0, "z": 0.0})
+        pose = (pose_dict["x"], pose_dict["y"], pose_dict["z"])
+        yaw = drone.telemetry.get("attitude", {}).get("yaw", 0.0)
+        old_map_filename = f"logs/old_map_{int(time.time())}.png"
+        map_builder.save_map(old_map_filename, pose, yaw)
+        print(f"Old map saved to {old_map_filename}")
+        map_builder.reset()
+
+        state["explore_active"] = True
+        follower.stop()
+        asyncio.create_task(explorer.start())
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/slam/stop_explore")
+async def stop_explore():
+    try:
+        state["explore_active"] = False
+        explorer.stop()
+        await drone.stop_offboard()
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 @app.post("/api/manual/move")
 async def manual_move(payload: dict):
     try:
@@ -337,10 +431,13 @@ async def manual_move(payload: dict):
         if not drone.telemetry["armed"]:
             return {"success": False, "error": "Drone is not armed"}
         
-        # Disable follow if active
+        # Disable follow/explore if active
         if state["follow_active"]:
             state["follow_active"] = False
             follower.stop()
+        if state.get("explore_active"):
+            state["explore_active"] = False
+            explorer.stop()
         
         # Ensure we are in OFFBOARD flight mode
         if "OFFBOARD" not in drone.telemetry["flight_mode"].upper():
@@ -427,8 +524,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 "detection": state["latest_detection"],
                 "target_class": state["target_class"],
                 "follow_active": state["follow_active"],
+                "explore_active": state.get("explore_active", False),
                 "drone_connected": drone.connected,
                 "target_behavior": state["target_behavior"],
+                "slam_pose": state.get("slam_pose", {"x": 0, "y": 0, "z": 0}),
                 "follower_params": {
                     "kp_yaw": follower.kp_yaw,
                     "kp_fwd": follower.kp_fwd,

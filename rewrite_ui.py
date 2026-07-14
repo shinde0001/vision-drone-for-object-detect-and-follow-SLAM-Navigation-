@@ -114,6 +114,18 @@ new_main = """        <main class="dashboard-grid">
                     </div>
                 </section>
 
+                <!-- SLAM Live Map -->
+                <section class="card glass-panel map-panel">
+                    <h2>Live 2D Map (SLAM)</h2>
+                    <div style="width: 100%; height: 200px; display: flex; align-items: center; justify-content: center; background: #000; border-radius: 8px; overflow: hidden; position: relative;">
+                        <img id="slam-map" src="/map_image" alt="SLAM Map" style="width: 100%; height: 100%; object-fit: contain;" />
+                    </div>
+                    <div class="info-row" style="margin-top: 10px;">
+                        <span class="label">Position (VO):</span>
+                        <span class="value highlight" id="slam-pose">X: 0.0, Y: 0.0</span>
+                    </div>
+                </section>
+
                 <!-- Controller Tuning -->
                 <section class="card glass-panel tuning-panel">
                     <h2>Controller Tuning</h2>
@@ -147,6 +159,10 @@ new_main = """        <main class="dashboard-grid">
                             <div class="control-row-tuning">
                                 <label for="range-alpha-alt">Altitude Smooth: <span id="val-alpha-alt">0.10</span></label>
                                 <input type="range" id="range-alpha-alt" min="0.01" max="1.0" step="0.01" value="0.10" class="slider" />
+                            </div>
+                            <div class="control-row-tuning" style="margin-top: 5px;">
+                                <label for="range-max-fwd-speed">Max Fwd Speed: <span id="val-max-fwd-speed">1.0</span> m/s</label>
+                                <input type="range" id="range-max-fwd-speed" min="0.1" max="3.0" step="0.1" value="1.0" class="slider" />
                             </div>
                         </div>
                         <button id="btn-tuning-save" class="btn btn-primary" style="margin-top:10px; width:100%">UPDATE TUNING</button>

@@ -117,21 +117,23 @@ sleep 8
 # ── Step 2: Spawn iris_fpv_cam model ──
 echo -e "${GREEN}[2/3] Spawning Iris with FPV camera...${NC}"
 
-# Find the iris_fpv_cam model
+# Find the custom iris_vision_cam model first
 FPV_MODEL=""
 IFS_bak=$IFS
 IFS=":"
 for p in ${GAZEBO_MODEL_PATH}; do
     p=$(echo "$p" | tr -d '\r')
-    if [ -f "${p}/iris_fpv_cam/iris_fpv_cam.sdf" ]; then
-        FPV_MODEL="${p}/iris_fpv_cam/iris_fpv_cam.sdf"
+    if [ -f "${p}/iris_vision_cam/model.sdf" ]; then
+        FPV_MODEL="${p}/iris_vision_cam/model.sdf"
         break
+    elif [ -f "${p}/iris_fpv_cam/iris_fpv_cam.sdf" ]; then
+        FPV_MODEL="${p}/iris_fpv_cam/iris_fpv_cam.sdf"
     fi
 done
 IFS=$IFS_bak
 
 if [ -z "$FPV_MODEL" ]; then
-    echo -e "${YELLOW}     iris_fpv_cam not found, using standard iris${NC}"
+    echo -e "${YELLOW}     iris_vision_cam / iris_fpv_cam not found, using standard iris${NC}"
     FPV_MODEL="${MODEL_PATH}"
 fi
 

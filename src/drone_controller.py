@@ -16,7 +16,10 @@ class DroneController:
             "speed": 0.0,
             "battery": 100,
             "armed": False,
-            "flight_mode": "UNKNOWN"
+            "flight_mode": "UNKNOWN",
+            "imu": {"accel": (0.0, 0.0, 0.0), "gyro": (0.0, 0.0, 0.0)},
+            "attitude": {"roll": 0.0, "pitch": 0.0, "yaw": 0.0},
+            "odometry": {"x": 0.0, "y": 0.0, "z": 0.0, "qw": 1.0, "qx": 0.0, "qy": 0.0, "qz": 0.0}
         }
         
     async def connect(self):
@@ -65,8 +68,27 @@ class DroneController:
             async def mon_mode():
                 async for mode in self.drone.telemetry.flight_mode():
                     self.telemetry["flight_mode"] = str(mode)
+            async def mon_imu():
+                async for imu in self.drone.telemetry.imu():
+                    self.telemetry["imu"]["accel"] = (imu.acceleration_frd.forward_m_s2, imu.acceleration_frd.right_m_s2, imu.acceleration_frd.down_m_s2)
+                    self.telemetry["imu"]["gyro"] = (imu.angular_velocity_frd.forward_rad_s, imu.angular_velocity_frd.right_rad_s, imu.angular_velocity_frd.down_rad_s)
+            async def mon_attitude():
+                async for attitude in self.drone.telemetry.attitude_euler():
+                    self.telemetry["attitude"]["roll"] = attitude.roll_deg
+                    self.telemetry["attitude"]["pitch"] = attitude.pitch_deg
+                    self.telemetry["attitude"]["yaw"] = attitude.yaw_deg
+            async def mon_odometry():
+                async for pos in self.drone.telemetry.position_velocity_ned():
+                    self.telemetry["odometry"]["x"] = pos.position.north_m
+                    self.telemetry["odometry"]["y"] = pos.position.east_m
+                    self.telemetry["odometry"]["z"] = pos.position.down_m
+                    # Not using quaternions for scale, so mock them
+                    self.telemetry["odometry"]["qw"] = 1.0
+                    self.telemetry["odometry"]["qx"] = 0.0
+                    self.telemetry["odometry"]["qy"] = 0.0
+                    self.telemetry["odometry"]["qz"] = 0.0
                     
-            await asyncio.gather(mon_alt(), mon_speed(), mon_batt(), mon_armed(), mon_mode())
+            await asyncio.gather(mon_alt(), mon_speed(), mon_batt(), mon_armed(), mon_mode(), mon_imu(), mon_attitude(), mon_odometry())
         except Exception as e:
             print(f"Telemetry stream interrupted: {e}")
             self.connected = False

@@ -21,6 +21,7 @@ class Detector:
             "green_cone": (np.array([35, 40, 40]), np.array([85, 255, 255])),
             "yellow_cylinder": (np.array([20, 100, 100]), np.array([35, 255, 255])),
             "person": (np.array([5, 100, 100]), np.array([20, 255, 255])), # Orange color bounds
+            "car": (np.array([140, 100, 100]), np.array([170, 255, 255])), # Magenta color bounds
         }
 
     def set_target(self, target_class):
@@ -93,7 +94,10 @@ class Detector:
                     x, y, w, h = cv2.boundingRect(largest_contour)
                     
                     # Distance estimation (rough)
-                    dist = 200.0 / max(w, h) if max(w, h) > 0 else -1
+                    if target == "car":
+                        dist = 500.0 / max(w, h) if max(w, h) > 0 else -1
+                    else:
+                        dist = 200.0 / max(w, h) if max(w, h) > 0 else -1
                     
                     detection_info = {
                         "class": target,

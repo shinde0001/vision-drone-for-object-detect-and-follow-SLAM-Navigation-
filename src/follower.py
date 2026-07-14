@@ -6,7 +6,7 @@ import numpy as np
 TARGET_HEIGHTS = {
     "red_sphere": 0.4,
     "blue_cube": 0.5,
-    "green_cone": 0.5,
+    "green_cylinder": 0.5,
     "yellow_cylinder": 0.5,
     "person": 1.8,
     "car": 1.5
@@ -92,9 +92,9 @@ class FollowController:
         current_time = time.time()
         current_alt = self.drone.telemetry["altitude"]
         
-        # Calculate dynamic target altitude based on object height (0.2x height)
+        # Calculate dynamic target altitude based on object height (1.2x height)
         # Ensure it is at least 0.5m for safety.
-        target_alt = max(0.5, 0.2 * TARGET_HEIGHTS.get(target_class, 1.0))
+        target_alt = max(2.0, 1.0 * TARGET_HEIGHTS.get(target_class, 1.0))
         
         if detection_info:
             if self.state == "SEARCHING":
@@ -114,8 +114,8 @@ class FollowController:
             # Center of the 640px frame is 320. 
             # We use a tight 40-pixel deadzone (300 to 340) to keep the object perfectly centered.
             # We calculate error relative to these bounds to avoid sudden ramping when crossing the threshold.
-            left_bound = 120
-            right_bound = 160
+            left_bound = 290
+            right_bound = 320
             
             if cx < left_bound:
                 # Object is too far left (< 240). `err_x_track` will be negative.

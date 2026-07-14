@@ -61,5 +61,14 @@
       <pose>5 5 0.7 0 0 0</pose>
     </model>
 
+    <!-- Car — 5m SW -->
+    <model name="car">
+      <include>
+        <uri>model://car</uri>
+      </include>
+      <pose>-5 -5 0.4 0 0 0</pose>
+    </model>
+
   </world>
 </sdf>
+
