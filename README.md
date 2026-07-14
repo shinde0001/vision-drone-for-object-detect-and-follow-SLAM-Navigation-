@@ -8,24 +8,24 @@ An advanced, offline-capable closed-loop visual servoing system that enables an 
 
 ```mermaid
 graph TD
-    subgraph Gazebo Classic 11 / PX4 SITL
+    subgraph gazebo ["Gazebo Classic 11 / PX4 SITL"]
         iris[Iris Quadcopter + FPV Cam] -->|UDP Stream: Port 5600| gst[GStreamer Pipeline]
         sim[Physics World / Targets] <-->|Subprocess API / gz model| srv[FastAPI Web Server]
     end
 
-    subgraph Computer Vision Pipeline
+    subgraph cv ["Computer Vision Pipeline"]
         gst -->|Raw Frames| cv_proc[Frame Processor]
         cv_proc -->|COCO Targets: Person/Car| yolo[YOLOv8 Inference]
         cv_proc -->|Geometric Primitives| hsv[HSV Color Tracker]
     end
 
-    subgraph Control Loop (Visual Servoing)
+    subgraph control ["Control Loop (Visual Servoing)"]
         yolo & hsv -->|BBox & Estimated Distance| pid[PID Tracking Controller]
         pid -->|Yaw & Velocity Commands| mav[MAVSDK Controller API]
         mav -->|Flight Commands: UDP 14540| iris
     end
 
-    subgraph User Interface
+    subgraph ui_sub ["User Interface"]
         srv -->|WebSocket Telemetry & MJPEG Stream| ui[Glassmorphism Web UI]
         ui -->|API Requests: Control & Parameters| srv
     end
