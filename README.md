@@ -1,4 +1,4 @@
-# 🛸 Autonomous Vision-Based Drone Follower + SLAM Navigation 
+# 🛸 Autonomous Vision-Based Drone Follower with SLAM Navigation
 
 An advanced, offline-capable closed-loop visual servoing system that enables an autonomous drone (PX4 SITL / Gazebo Classic) to detect, track, and follow dynamic targets in real-time. The system integrates deep learning (`YOLOv8`), traditional computer vision (`HSV Color Masking`), flight controller integration (`MAVSDK`), and a modern `FastAPI` control dashboard.
 
