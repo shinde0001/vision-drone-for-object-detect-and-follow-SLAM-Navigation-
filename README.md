@@ -41,7 +41,7 @@ graph TD
 * **Camera Projection Distance Estimation**:
   Uses thin-lens projection geometry to estimate target distance dynamically:
   $$\text{Distance} = \frac{\text{Physical Height (m)} \times \text{Camera Focal Length (px)}}{\text{Bounding Box Height (px)}}$$
-  *(Focal length calibrated to $277.19$ pixels based on the simulation camera matrix)*.
+  *(Focal length calibrated to pixels based on the simulation camera matrix)*.
 
 ### 2. Closed-Loop PD Flight Control (`src/follower.py`)
 * **Prioritized Two-Stage Servo**:
